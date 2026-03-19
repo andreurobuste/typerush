@@ -103,6 +103,7 @@ export default function Game() {
   const [quitConfirm, setQuitConfirm] = useState(false);
   const [playerName,  setPlayerName]  = useState('');
   const [saveState,   setSaveState]   = useState('idle');
+  const [fullBank,    setFullBank]    = useState([]);
 
   const inputRef    = useRef(null);
   const timerRef    = useRef(null);
@@ -111,19 +112,30 @@ export default function Game() {
   const streakRef   = useRef(0);
 
   useEffect(() => {
-    fetch(`/packs/${lang === 'cat' ? 'cat' : lang}.json`)
+    const packLang = lang === 'cat' ? 'cat' : lang;
+    fetch(`/packs/${packLang}.json`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => {
-        const today = getTodayKey();
-        if (data[today]) setPackInfo({ theme: data[today].theme, words: data[today].words });
-        else setPackInfo(null);
+        // New format: { bank: [...words], themes: { "MM-DD": "theme name" } }
+        // Legacy format: { "YYYY-MM-DD": { theme, words } }
+        if (data.bank && data.themes) {
+          const d = new Date();
+          const mmdd = `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          const theme = data.themes[mmdd] || '';
+          setPackInfo({ theme, words: data.bank });
+        } else {
+          const today = getTodayKey();
+          if (data[today]) setPackInfo({ theme: data[today].theme, words: data[today].words });
+          else setPackInfo(null);
+        }
       })
       .catch(() => setPackInfo(null));
   }, [lang]);
 
   useEffect(() => { setPlayerName(displayName || ''); }, [displayName]);
 
-  const activeWords = packInfo?.words ?? FALLBACK[lang] ?? FALLBACK.es;
+  // Use full bank (500-1000 words) if available, else pack words, else fallback
+  const activeWords = fullBank.length > 0 ? fullBank : (packInfo?.words ?? FALLBACK[lang] ?? FALLBACK.es);
 
   const startGame = useCallback(() => {
     setWords(buildQueue(activeWords));
