@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, getAnonId, migrateAnonScores } from './supabase';
 
@@ -7,7 +6,7 @@ const AuthContext = createContext({ user: null, loading: true, displayName: '', 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [loading, setLoading] = useState(true);
-  const anonId = getAnonId(); // siempre disponible
+  const anonId = getAnonId();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -19,9 +18,27 @@ export function AuthProvider({ children }) {
       const newUser = session?.user ?? null;
       setUser(newUser);
       setLoading(false);
-      // Si acaba de iniciar sesión, migrar puntuaciones anónimas
+
       if (newUser && _event === 'SIGNED_IN') {
+        // Migrar puntuaciones anónimas
         await migrateAnonScores(newUser.id, anonId);
+
+        // Aplicar nombre pendiente si existe
+        const pendingName = localStorage.getItem('typerush_pending_name');
+        if (pendingName) {
+          await supabase.from('profiles').upsert({
+            id: newUser.id,
+            display_name: pendingName,
+          });
+          // Actualizar también user_metadata
+          await supabase.auth.updateUser({
+            data: { display_name: pendingName }
+          });
+          localStorage.removeItem('typerush_pending_name');
+        } else if (!newUser.user_metadata?.display_name) {
+          // Si no hay nombre pendiente, crear perfil mínimo
+          await supabase.from('profiles').upsert({ id: newUser.id });
+        }
       }
     });
 
