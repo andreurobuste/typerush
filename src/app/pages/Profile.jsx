@@ -2,178 +2,163 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { colors, fontFamily as fonts } from '../design-system';
 import { useAuth } from '../lib/AuthContext';
-import { getUserScores, updateProfile } from '../lib/supabase';
+import { getMyScores, deleteAccount } from '../lib/supabase';
+import { useLang } from '../components/Layout';
 
-function timeAgo(dateStr) {
+function timeAgo(dateStr, lang) {
   const s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (s < 60) return 'Hace un momento';
-  if (s < 3600) return `Hace ${Math.floor(s/60)}m`;
-  if (s < 86400) return `Hace ${Math.floor(s/3600)}h`;
-  return new Date(dateStr).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+  if (lang === 'en')  return s < 60 ? 'Just now'       : s < 3600 ? `${Math.floor(s/60)}m ago`  : s < 86400 ? `${Math.floor(s/3600)}h ago`  : new Date(dateStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  if (lang === 'cat') return s < 60 ? 'Fa un moment'   : s < 3600 ? `Fa ${Math.floor(s/60)}m`   : s < 86400 ? `Fa ${Math.floor(s/3600)}h`   : new Date(dateStr).toLocaleDateString('ca-ES', { day: '2-digit', month: 'short' });
+  return                     s < 60 ? 'Hace un momento': s < 3600 ? `Hace ${Math.floor(s/60)}m` : s < 86400 ? `Hace ${Math.floor(s/3600)}h` : new Date(dateStr).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
 }
 
 export default function Profile() {
-  const [viewMode,   setViewMode]   = useState('cards');
-  const [scores,     setScores]     = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [editName,   setEditName]   = useState(false);
-  const [newName,    setNewName]    = useState('');
-  const [savingName, setSavingName] = useState(false);
-  const { user, displayName } = useAuth();
+  const { lang } = useLang();
+  const { user, displayName, anonId } = useAuth();
   const navigate = useNavigate();
 
+  const [scores,        setScores]        = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
+
   useEffect(() => {
+    getMyScores(user?.id, anonId).then(s => { setScores(s); setLoading(false); });
+  }, [user, anonId]);
+
+  const handleDelete = async () => {
     if (!user) return;
-    getUserScores(user.id).then(s => { setScores(s); setLoading(false); });
-    setNewName(displayName);
-  }, [user, displayName]);
-
-  const handleSaveName = async () => {
-    if (!user || !newName.trim()) return;
-    setSavingName(true);
-    try { await updateProfile(user.id, { display_name: newName.trim() }); setEditName(false); }
-    catch {}
-    finally { setSavingName(false); }
-  };
-
-  const handleShare = (s) => {
-    const text = `¡Acabo de conseguir ${s.score} palabras en TypeRush${s.theme ? ` (${s.theme})` : ''}! 🔥 typerush.vercel.app`;
-    navigator.clipboard.writeText(text);
+    setDeleting(true);
+    await deleteAccount(user.id);
+    navigate('/');
   };
 
   const stats = {
     total: scores.length,
     best:  scores.reduce((m, s) => Math.max(m, s.score), 0),
     avg:   scores.length ? Math.round(scores.reduce((a, s) => a + s.score, 0) / scores.length) : 0,
-    words: scores.reduce((a, s) => a + s.score, 0),
+  };
+
+  const T = {
+    title:      lang === 'en' ? 'MY PROFILE'      : lang === 'cat' ? 'EL MEU PERFIL'    : 'MI PERFIL',
+    games:      lang === 'en' ? 'Games'            : lang === 'cat' ? 'Partides'         : 'Partidas',
+    best:       lang === 'en' ? 'Best'             : lang === 'cat' ? 'Millor'           : 'Mejor',
+    avg:        lang === 'en' ? 'Average'          : lang === 'cat' ? 'Mitjana'          : 'Media',
+    history:    lang === 'en' ? 'GAME HISTORY'     : lang === 'cat' ? 'HISTORIAL'        : 'HISTORIAL',
+    noGames:    lang === 'en' ? "YOU HAVEN'T PLAYED YET" : lang === 'cat' ? 'ENCARA NO HAS JUGAT' : 'AÚN NO HAS JUGADO',
+    noGamesSub: lang === 'en' ? 'Play your first game and it will appear here.' : lang === 'cat' ? 'Juga la teva primera partida i apareixerà aquí.' : 'Juega tu primera partida y aparecerá aquí.',
+    play:       lang === 'en' ? 'PLAY NOW'         : lang === 'cat' ? 'JUGAR ARA'        : 'JUGAR AHORA',
+    words:      lang === 'en' ? 'words in 60s'     : lang === 'cat' ? 'paraules en 60s'  : 'palabras en 60s',
+    delete:     lang === 'en' ? 'Delete account'   : lang === 'cat' ? 'Eliminar compte'  : 'Eliminar cuenta',
+    deleteWarn: lang === 'en' ? 'This action is irreversible. All your data will be deleted.' : lang === 'cat' ? 'Aquesta acció és irreversible. Totes les teves dades seran eliminades.' : 'Esta acción es irreversible. Todos tus datos serán eliminados.',
+    deleteConfirm: lang === 'en' ? 'Yes, delete everything' : lang === 'cat' ? 'Sí, eliminar-ho tot' : 'Sí, eliminar todo',
+    cancel:     lang === 'en' ? 'Cancel'           : lang === 'cat' ? 'Cancel·lar'       : 'Cancelar',
+    anonNote:   lang === 'en' ? 'You are browsing as a guest. Create a profile to access your history from any device.' : lang === 'cat' ? 'Estàs navegant com a convidat. Crea un perfil per accedir al teu historial des de qualsevol dispositiu.' : 'Estás navegando como invitado. Crea un perfil para acceder a tu historial desde cualquier dispositivo.',
   };
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: colors.background, padding: 'clamp(20px,4vw,32px)' }}>
-      <div style={{ maxWidth: '1240px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '860px', margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: 'clamp(24px,4vw,40px)', marginBottom: 'clamp(24px,4vw,32px)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'clamp(16px,3vw,24px)', marginBottom: 'clamp(20px,3vw,24px)', flexWrap: 'wrap' }}>
-            <div style={{ fontSize: 'clamp(48px,8vw,64px)', width: 'clamp(80px,12vw,100px)', height: 'clamp(80px,12vw,100px)', backgroundColor: colors.background, border: `2px solid ${colors.accent}`, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👤</div>
-            <div style={{ flex: 1, minWidth: '200px' }}>
-              {editName ? (
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
-                  <input value={newName} onChange={e => setNewName(e.target.value)} maxLength={20}
-                    style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(18px,3vw,24px)', textTransform: 'uppercase', backgroundColor: colors.background, border: `1px solid ${colors.accent}`, borderRadius: '4px', color: colors.textPrimary, padding: '4px 8px', outline: 'none' }} />
-                  <button onClick={handleSaveName} disabled={savingName} style={{ fontFamily: fonts.mono, fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', padding: '6px 12px', border: 'none', backgroundColor: colors.accent, color: '#000', borderRadius: '4px', cursor: 'pointer' }}>
-                    {savingName ? '...' : 'OK'}
-                  </button>
-                  <button onClick={() => setEditName(false)} style={{ fontFamily: fonts.mono, fontSize: '11px', padding: '6px 10px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textSecondary, borderRadius: '4px', cursor: 'pointer' }}>✕</button>
-                </div>
-              ) : (
-                <h1 style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(24px,4vw,32px)', textTransform: 'uppercase', letterSpacing: '-0.02em', color: colors.textPrimary, marginBottom: '4px' }}>
-                  {displayName || 'SIN NOMBRE'}
-                </h1>
-              )}
-              <p style={{ fontFamily: fonts.mono, fontSize: 'clamp(12px,2vw,14px)', color: colors.textSecondary }}>
-                {user?.email} · Miembro desde {new Date(user?.created_at || '').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}
-              </p>
+        <div style={{ marginBottom: 'clamp(32px,5vw,48px)' }}>
+          <h1 style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(32px,6vw,56px)', textTransform: 'uppercase', letterSpacing: '-0.02em', color: colors.textPrimary, lineHeight: 1 }}>
+            {displayName ? displayName.toUpperCase() : T.title}
+          </h1>
+          {user && <p style={{ fontFamily: fonts.mono, fontSize: '12px', color: colors.textMuted, marginTop: '8px' }}>{user.email}</p>}
+        </div>
+
+        {/* Aviso si es anónimo */}
+        {!user && (
+          <div style={{ backgroundColor: colors.surface, border: `1px solid ${colors.borderMedium}`, borderRadius: '8px', padding: '16px 20px', marginBottom: '32px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <span style={{ color: colors.combo5, fontSize: '16px', flexShrink: 0 }}>⚠</span>
+            <p style={{ fontFamily: fonts.mono, fontSize: '12px', color: colors.textSecondary, lineHeight: 1.6 }}>{T.anonNote}</p>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'clamp(12px,2vw,16px)', marginBottom: 'clamp(32px,5vw,48px)' }}>
+          {[{ label: T.games, value: stats.total }, { label: T.best, value: stats.best }, { label: T.avg, value: stats.avg }].map(s => (
+            <div key={s.label} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, padding: 'clamp(16px,3vw,24px)', textAlign: 'center' }}>
+              <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(28px,5vw,48px)', color: colors.accent, lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontFamily: fonts.mono, fontSize: '11px', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '8px' }}>{s.label}</div>
             </div>
-            <button onClick={() => setEditName(true)}
-              style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', padding: '8px 16px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textPrimary, borderRadius: '4px', cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = colors.accent; e.currentTarget.style.backgroundColor = 'rgba(0,255,135,0.05)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; e.currentTarget.style.backgroundColor = 'transparent'; }}>
-              Editar nombre
+          ))}
+        </div>
+
+        <div style={{ height: '1px', backgroundColor: colors.border, marginBottom: 'clamp(32px,5vw,48px)' }} />
+
+        {/* Historial */}
+        <h2 style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(20px,3vw,28px)', textTransform: 'uppercase', letterSpacing: '-0.02em', color: colors.textPrimary, marginBottom: 'clamp(20px,3vw,28px)' }}>{T.history}</h2>
+
+        {loading ? (
+          <p style={{ fontFamily: fonts.mono, fontSize: '13px', color: colors.textMuted, padding: '32px 0', textAlign: 'center', letterSpacing: '0.1em' }}>LOADING...</p>
+        ) : scores.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 'clamp(40px,6vw,60px) 20px', backgroundColor: colors.surface, border: `1px solid ${colors.border}` }}>
+            <p style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(18px,3vw,24px)', textTransform: 'uppercase', color: colors.textPrimary, marginBottom: '12px' }}>{T.noGames}</p>
+            <p style={{ fontFamily: fonts.mono, fontSize: '13px', color: colors.textSecondary, marginBottom: '24px' }}>{T.noGamesSub}</p>
+            <button onClick={() => navigate('/jugar')}
+              style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '12px 32px', border: 'none', backgroundColor: colors.accent, color: '#000', cursor: 'pointer' }}>
+              {T.play}
             </button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px,1fr))', gap: 'clamp(12px,2vw,16px)' }}>
-            {[{ label: 'Partidas', value: stats.total }, { label: 'Media', value: stats.avg }, { label: 'Mejor', value: stats.best }, { label: 'Palabras', value: stats.words }].map(s => (
-              <div key={s.label} style={{ backgroundColor: colors.background, border: `1px solid ${colors.border}`, borderRadius: '4px', padding: 'clamp(12px,2vw,16px)', textAlign: 'center' }}>
-                <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(24px,4vw,32px)', color: colors.accent, lineHeight: 1 }}>{s.value}</div>
-                <div style={{ fontFamily: fonts.mono, fontSize: '11px', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: '6px' }}>{s.label}</div>
+        ) : (
+          <div>
+            {scores.map((s, i) => (
+              <div key={s.id || i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: 'clamp(12px,2vw,20px)', alignItems: 'center', padding: 'clamp(14px,2vw,18px) 0', borderBottom: `1px solid ${colors.border}`, transition: 'background-color 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = colors.surface; }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
+                <div>
+                  <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(13px,2vw,16px)', textTransform: 'uppercase', color: colors.textPrimary }}>{s.theme || 'PACK GENERAL'}</div>
+                  <div style={{ fontFamily: fonts.mono, fontSize: '10px', color: colors.textMuted, marginTop: '2px' }}>{timeAgo(s.created_at, lang)}</div>
+                </div>
+                {s.combo_level && (
+                  <span style={{ fontFamily: fonts.mono, fontWeight: 700, fontSize: '13px', color: s.combo_level === 'x20' ? colors.combo20 : colors.combo5 }}>
+                    {s.combo_level === 'x20' ? '×20 🔥' : '×5 🔥'}
+                  </span>
+                )}
+                <div style={{ fontFamily: fonts.mono, fontSize: '11px', color: colors.textMuted }}>{s.score} {T.words}</div>
+                <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(22px,3vw,28px)', color: colors.accent, textAlign: 'right', minWidth: '50px' }}>{s.score}</div>
               </div>
             ))}
           </div>
-        </div>
+        )}
 
-        {/* Historial */}
-        <div style={{ marginBottom: 'clamp(24px,4vw,32px)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'clamp(16px,3vw,24px)', flexWrap: 'wrap', gap: '12px' }}>
-            <h2 style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(20px,3vw,28px)', textTransform: 'uppercase', letterSpacing: '-0.02em', color: colors.textPrimary }}>HISTORIAL</h2>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {['cards','list'].map(m => (
-                <button key={m} onClick={() => setViewMode(m)}
-                  style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', padding: '6px 14px', border: `1px solid ${viewMode === m ? colors.accent : colors.border}`, backgroundColor: viewMode === m ? 'rgba(0,255,135,0.05)' : 'transparent', color: viewMode === m ? colors.accent : colors.textMuted, borderRadius: '4px', cursor: 'pointer' }}>
-                  {m === 'cards' ? '⊞ Cards' : '≡ Lista'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {loading ? (
-            <p style={{ fontFamily: fonts.mono, fontSize: '13px', color: colors.textMuted, padding: '32px 0', textAlign: 'center' }}>CARGANDO...</p>
-          ) : scores.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'clamp(40px,6vw,60px) 20px', backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: '8px' }}>
-              <p style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(20px,3vw,28px)', textTransform: 'uppercase', color: colors.textPrimary, marginBottom: '12px' }}>AÚN NO HAS JUGADO</p>
-              <p style={{ fontFamily: fonts.mono, fontSize: '13px', color: colors.textSecondary, marginBottom: '24px' }}>Juega tu primera partida y aparecerá aquí.</p>
-              <button onClick={() => navigate('/jugar')} style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '12px', textTransform: 'uppercase', padding: '12px 32px', border: 'none', backgroundColor: colors.accent, color: '#000', borderRadius: '4px', cursor: 'pointer' }}>JUGAR AHORA</button>
-            </div>
-          ) : viewMode === 'cards' ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 'clamp(12px,2vw,16px)' }}>
-              {scores.map((s, i) => (
-                <div key={s.id || i} style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: '8px', padding: 'clamp(16px,2.5vw,20px)', transition: 'border-color 0.2s' }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = colors.borderMedium; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                    <div>
-                      <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(14px,2vw,16px)', textTransform: 'uppercase', color: colors.textPrimary }}>{s.theme || 'PACK GENERAL'}</div>
-                      <div style={{ fontFamily: fonts.mono, fontSize: '10px', color: colors.textMuted, marginTop: '2px' }}>{timeAgo(s.created_at)}</div>
-                    </div>
-                    {s.combo_level && <span style={{ fontFamily: fonts.mono, fontWeight: 700, fontSize: '13px', color: s.combo_level === 'x20' ? colors.combo20 : colors.combo5 }}>{s.combo_level === 'x20' ? '×20 🔥' : '×5 🔥'}</span>}
-                  </div>
-                  <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(36px,6vw,48px)', color: colors.accent, lineHeight: 1, marginBottom: '8px' }}>{s.score}</div>
-                  <div style={{ fontFamily: fonts.mono, fontSize: '11px', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>palabras en 60 seg</div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => navigate('/jugar')} style={{ flex: 1, fontFamily: fonts.mono, fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', padding: '8px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textSecondary, borderRadius: '4px', cursor: 'pointer' }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = colors.accent; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; }}>
-                      🎮 Jugar
-                    </button>
-                    <button onClick={() => handleShare(s)} style={{ flex: 1, fontFamily: fonts.mono, fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', padding: '8px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textSecondary, borderRadius: '4px', cursor: 'pointer' }}
-                      onMouseEnter={e => { e.currentTarget.style.borderColor = colors.accent; }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = colors.border; }}>
-                      📤 Compartir
-                    </button>
-                  </div>
+        {/* Eliminar cuenta — solo si está logueado */}
+        {user && (
+          <>
+            <div style={{ height: '1px', backgroundColor: colors.border, margin: 'clamp(40px,6vw,60px) 0 clamp(24px,4vw,32px)' }} />
+            {!confirmDelete ? (
+              <button onClick={() => setConfirmDelete(true)}
+                style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '10px 20px', border: `1px solid ${colors.error}`, backgroundColor: 'transparent', color: colors.error, borderRadius: '4px', cursor: 'pointer', opacity: 0.6, transition: 'opacity 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={e => { e.currentTarget.style.opacity = '0.6'; }}>
+                {T.delete}
+              </button>
+            ) : (
+              <div style={{ backgroundColor: colors.surface, border: `1px solid ${colors.error}`, borderRadius: '8px', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '480px' }}>
+                <p style={{ fontFamily: fonts.mono, fontSize: '12px', color: colors.textSecondary, lineHeight: 1.6 }}>{T.deleteWarn}</p>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button onClick={handleDelete} disabled={deleting}
+                    style={{ fontFamily: fonts.mono, fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '10px 20px', border: 'none', backgroundColor: colors.error, color: '#fff', borderRadius: '4px', cursor: deleting ? 'not-allowed' : 'pointer' }}>
+                    {deleting ? '...' : T.deleteConfirm}
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)}
+                    style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', padding: '10px 20px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textSecondary, borderRadius: '4px', cursor: 'pointer' }}>
+                    {T.cancel}
+                  </button>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ backgroundColor: colors.surface, border: `1px solid ${colors.border}`, borderRadius: '8px', overflowX: 'auto' }}>
-              {scores.map((s, i) => (
-                <div key={s.id || i} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto auto', gap: '16px', alignItems: 'center', padding: '16px 20px', borderBottom: i < scores.length - 1 ? `1px solid ${colors.border}` : 'none', minWidth: '500px' }}
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = colors.background; }}
-                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                  <div>
-                    <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: '15px', textTransform: 'uppercase', color: colors.textPrimary }}>{s.theme || 'GENERAL'}</div>
-                    <div style={{ fontFamily: fonts.mono, fontSize: '10px', color: colors.textMuted }}>{timeAgo(s.created_at)}</div>
-                  </div>
-                  <div style={{ fontFamily: fonts.mono, fontSize: '12px', color: colors.textSecondary }}>{s.score} palabras</div>
-                  <div style={{ fontFamily: fonts.mono, fontWeight: 600, fontSize: '14px', color: s.combo_level === 'x20' ? colors.combo20 : s.combo_level === 'x5' ? colors.combo5 : colors.textMuted, minWidth: '60px', textAlign: 'center' }}>
-                    {s.combo_level ? `${s.combo_level === 'x20' ? '×20' : '×5'} 🔥` : '—'}
-                  </div>
-                  <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: '24px', color: colors.accent }}>{s.score}</div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => navigate('/jugar')} style={{ fontFamily: fonts.mono, fontSize: '14px', padding: '8px 12px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textPrimary, borderRadius: '4px', cursor: 'pointer' }}>🎮</button>
-                    <button onClick={() => handleShare(s)} style={{ fontFamily: fonts.mono, fontSize: '14px', padding: '8px 12px', border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.textPrimary, borderRadius: '4px', cursor: 'pointer' }}>📤</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+          </>
+        )}
 
-        <div style={{ height: '1px', backgroundColor: colors.border, margin: 'clamp(40px,6vw,60px) 0' }} />
+        {/* Footer */}
+        <div style={{ height: '1px', backgroundColor: colors.border, margin: 'clamp(40px,6vw,60px) 0 0' }} />
         <footer style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 'clamp(24px,4vw,32px) 0', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ fontFamily: fonts.display, fontWeight: 900, fontSize: 'clamp(16px,2.5vw,18px)', textTransform: 'uppercase' }}>
-            <span style={{ color: colors.textPrimary }}>TYPE</span><span style={{ color: colors.accent }}>RUSH</span>
-            <span style={{ color: colors.textSecondary, fontFamily: fonts.mono, fontSize: '10px', fontWeight: 400, marginLeft: '8px' }}>— TU BREAK DIARIO DE 60 SEGUNDOS</span>
+            <span style={{ color: colors.textPrimary }}>TYPE</span>
+            <span style={{ color: colors.accent }}>RUSH</span>
           </div>
           <a href="https://andreurobuste.com/plaigrund" target="_blank" rel="noopener noreferrer"
             style={{ fontFamily: fonts.mono, fontSize: '10px', color: colors.numberMuted, letterSpacing: '0.1em', textTransform: 'uppercase', textDecoration: 'none' }}
