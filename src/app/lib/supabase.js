@@ -102,3 +102,29 @@ export async function migrateAnonScores(userId, anonId) {
     .eq('anon_id', anonId)
     .is('user_id', null);
 }
+
+// ── DELETE ACCOUNT via Edge Function ─────────────────────────────────────────
+export async function deleteAccount() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('No session');
+
+  const response = await fetch(
+    `${SUPABASE_URL}/functions/v1/delete-user`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ userId: session.user.id }),
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Error deleting account');
+  }
+
+  await supabase.auth.signOut();
+  return true;
+}
