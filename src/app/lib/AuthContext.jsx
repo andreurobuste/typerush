@@ -1,24 +1,30 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from './supabase';
 
-const AuthContext = createContext({ user: null, session: null, loading: true, displayName: '' });
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase, getAnonId, migrateAnonScores } from './supabase';
+
+const AuthContext = createContext({ user: null, loading: true, displayName: '', anonId: '' });
 
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
-  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const anonId = getAnonId(); // siempre disponible
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const newUser = session?.user ?? null;
+      setUser(newUser);
       setLoading(false);
+      // Si acaba de iniciar sesión, migrar puntuaciones anónimas
+      if (newUser && _event === 'SIGNED_IN') {
+        await migrateAnonScores(newUser.id, anonId);
+      }
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -28,7 +34,7 @@ export function AuthProvider({ children }) {
     user?.email?.split('@')[0] || '';
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, displayName }}>
+    <AuthContext.Provider value={{ user, loading, displayName, anonId }}>
       {children}
     </AuthContext.Provider>
   );
