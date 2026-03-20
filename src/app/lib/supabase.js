@@ -30,16 +30,6 @@ export async function signOut() {
   if (error) throw error;
 }
 
-export async function deleteAccount(userId) {
-  // Borrar puntuaciones del usuario
-  await supabase.from('scores').delete().eq('user_id', userId);
-  // Borrar perfil
-  await supabase.from('profiles').delete().eq('id', userId);
-  // Cerrar sesión (el usuario se borra desde Supabase Auth automáticamente
-  // con la política de cascade, o lo borramos via admin si tenemos service key)
-  await supabase.auth.signOut();
-}
-
 // ── SCORES ────────────────────────────────────────────────────────────────────
 export async function saveScore({ playerName, score, bestCombo, comboLevel, lang, theme, userId, anonId }) {
   const { error } = await supabase.from('scores').insert({
