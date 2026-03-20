@@ -5,28 +5,22 @@ const SUPABASE_KEY = 'sb_publishable_2yu2F9_cWEbk1p5pJAxxAg_RRgViind';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-export async function signUp(email, password, displayName) {
-  const { data, error } = await supabase.auth.signUp({
-    email, password,
-    options: { data: { display_name: displayName } },
-  });
-  if (error) throw error;
-  if (data.user) {
-    await supabase.from('profiles').upsert({ id: data.user.id, display_name: displayName });
+// ── ID ANÓNIMO ────────────────────────────────────────────────────────────────
+// Se crea automáticamente en la primera visita y persiste en el navegador
+export function getAnonId() {
+  let id = localStorage.getItem('typerush_anon_id');
+  if (!id) {
+    id = 'anon_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    localStorage.setItem('typerush_anon_id', id);
   }
-  return data;
+  return id;
 }
 
-export async function signIn(email, password) {
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) throw error;
-  return data;
-}
-
-export async function signInWithGoogle() {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: `${window.location.origin}/` },
+// ── MAGIC LINK ────────────────────────────────────────────────────────────────
+export async function sendMagicLink(email) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: `${window.location.origin}/` },
   });
   if (error) throw error;
 }
@@ -36,27 +30,27 @@ export async function signOut() {
   if (error) throw error;
 }
 
-export async function sendPasswordReset(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  });
-  if (error) throw error;
+export async function deleteAccount(userId) {
+  // Borrar puntuaciones del usuario
+  await supabase.from('scores').delete().eq('user_id', userId);
+  // Borrar perfil
+  await supabase.from('profiles').delete().eq('id', userId);
+  // Cerrar sesión (el usuario se borra desde Supabase Auth automáticamente
+  // con la política de cascade, o lo borramos via admin si tenemos service key)
+  await supabase.auth.signOut();
 }
 
-export async function updatePassword(newPassword) {
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) throw error;
-}
-
-export async function saveScore({ playerName, score, bestCombo, comboLevel, lang, theme, userId }) {
+// ── SCORES ────────────────────────────────────────────────────────────────────
+export async function saveScore({ playerName, score, bestCombo, comboLevel, lang, theme, userId, anonId }) {
   const { error } = await supabase.from('scores').insert({
-    player_name: playerName,
+    player_name: playerName || 'Anónimo',
     score,
     best_combo: bestCombo,
     combo_level: comboLevel,
     lang,
     theme: theme || null,
     user_id: userId || null,
+    anon_id: anonId || null,
   });
   return !error;
 }
@@ -77,16 +71,34 @@ export async function getTotalPlayers() {
   return count || 0;
 }
 
-export async function getUserScores(userId) {
-  const { data } = await supabase
-    .from('scores')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
-  return data || [];
+export async function getMyScores(userId, anonId) {
+  // Primero intentamos por user_id si está logueado
+  if (userId) {
+    const { data } = await supabase
+      .from('scores')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    return data || [];
+  }
+  // Si no, por anon_id
+  if (anonId) {
+    const { data } = await supabase
+      .from('scores')
+      .select('*')
+      .eq('anon_id', anonId)
+      .order('created_at', { ascending: false });
+    return data || [];
+  }
+  return [];
 }
 
-export async function updateProfile(userId, updates) {
-  const { error } = await supabase.from('profiles').upsert({ id: userId, ...updates });
-  if (error) throw error;
+// Migrar puntuaciones anónimas al usuario registrado
+export async function migrateAnonScores(userId, anonId) {
+  if (!userId || !anonId) return;
+  await supabase
+    .from('scores')
+    .update({ user_id: userId })
+    .eq('anon_id', anonId)
+    .is('user_id', null);
 }
