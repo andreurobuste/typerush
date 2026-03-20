@@ -21,7 +21,7 @@ export const colors = {
 };
 
 export const fontFamily = {
-  display: 'Arial Black, "Helvetica Neue", sans-serif',
+  display: '"Bricolage Grotesque", "Arial Black", sans-serif',
   mono:    '"JetBrains Mono", "Courier New", monospace',
 };
 
